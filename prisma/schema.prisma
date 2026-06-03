@@ -35,6 +35,11 @@ model Folder {
   user_id       String    
   user          User      @relation(fields: [user_id],references: [clerkId])
   images        Image[]
+
+  // self relation
+
+  parent        Folder? @relation("FolderChildren",fields: [parent_id],references: [id],onDelete: Cascade)
+  children      Folder[] @relation("FolderChildren")
 }
 // ========== Images ===========
 
