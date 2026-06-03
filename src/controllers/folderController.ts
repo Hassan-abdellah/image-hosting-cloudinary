@@ -68,8 +68,10 @@ export const createFolder = async (req: Request, res: Response) => {
     }
 
     // create the folder
-    await createFolderService(name, parent_id || null, clerkId);
-    res.status(201).json({ status: true, message: "Created Successfully" });
+    const folder = await createFolderService(name, parent_id || null, clerkId);
+    res
+      .status(201)
+      .json({ status: true, message: "Created Successfully", folder });
   } catch (error) {
     console.log("error", error);
     return res.status(500).json({ error: "Internal Server Error" });
