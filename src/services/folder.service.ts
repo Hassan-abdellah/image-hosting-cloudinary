@@ -1,8 +1,7 @@
 import path from "path";
 import { cwd } from "process";
 import { prisma } from "../lib/prisma";
-import { cp, mkdir, rename, rm } from "fs/promises";
-
+import { cp, mkdir, rm } from "fs/promises";
 const BASE_DIR = path.join(cwd(), "storage");
 
 // create folder
@@ -11,19 +10,22 @@ export const createFolderService = async (
   parentId: string | null,
   userId: string,
 ) => {
-  let parentFolderName = null;
+  let parentFolderPath = null;
 
   if (parentId) {
     const folder = await prisma.folder.findUnique({ where: { id: parentId } });
-    parentFolderName = folder?.name;
+    parentFolderPath = folder?.path;
   }
 
-  const folderPath = parentFolderName
-    ? path.join(BASE_DIR, parentFolderName, folderName)
+  const folderPath = parentFolderPath
+    ? path.join(BASE_DIR, parentFolderPath, folderName)
     : path.join(BASE_DIR, folderName);
 
   //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
-  const folderPathForDB = folderPath.split("\storage")[1];
+  const folderPathForDB = path
+    .relative(BASE_DIR, folderPath)
+    .replace(/\\/g, "/");
+
   // 1. Save to DB first (inside a transaction)
 
   const folder = await prisma.$transaction(async (tx) => {
@@ -57,15 +59,15 @@ export const renameFolderService = async (
   existingFolderPath: string,
 ) => {
   const oldPath = path.join(BASE_DIR, existingFolderPath || "");
-  const newPath = path.join(BASE_DIR, newFolderName);
+  const newPath = path.join(path.dirname(oldPath), newFolderName);
 
   //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
-  const folderPathForDB = newPath.split("\storage")[1];
+  const folderPathForDB = path.relative(BASE_DIR, newPath).replace(/\\/g, "/");
 
   // 1. Find all subfolders whose path starts with the old folder path
   const subFolders = await prisma.folder.findMany({
     where: {
-      path: { contains: existingFolderPath },
+      path: { startsWith: existingFolderPath.replace(/\\/g, "/") + "/" },
       id: { not: folderId }, // exclude the parent itself
     },
   });
