@@ -4,9 +4,10 @@ import { requireAuth } from "../utils/authUtils";
 import { isRequestParamsMissing, requireReqBody } from "../utils/reqUtils";
 import {
   createFolderService,
+  deleteFolderService,
+  moveFolderService,
   renameFolderService,
 } from "../services/folder.service";
-import { profile } from "console";
 
 interface folderReqBody {
   parent_id?: string;
@@ -34,6 +35,7 @@ async function findOwnedFolder(
   return folder;
 }
 
+// create Folder
 export const createFolder = async (req: Request, res: Response) => {
   //   check if the user is authenticated and get the clerkId
   const clerkId = requireAuth(req, res);
@@ -78,6 +80,7 @@ export const createFolder = async (req: Request, res: Response) => {
   }
 };
 
+// rename Folder
 export const renameFolder = async (req: Request, res: Response) => {
   //   check if the user is authenticated and get the clerkId
   const clerkId = requireAuth(req, res);
@@ -110,6 +113,69 @@ export const renameFolder = async (req: Request, res: Response) => {
     res
       .status(200)
       .json({ status: true, message: "Folder renamed successfully" });
+  } catch (error) {
+    console.log("error", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+// move folder
+export const moveFolder = async (req: Request, res: Response) => {
+  //   check if the user is authenticated and get the clerkId
+  const clerkId = requireAuth(req, res);
+  if (!clerkId) return;
+
+  // check if the Id is Presented in the URL params or not
+  const folderId = isRequestParamsMissing(req, res, "Folder");
+  if (!folderId) return;
+
+  //  check if the request body is provided and get the body
+  const body = requireReqBody(req, res);
+  if (!body) return;
+
+  try {
+    // destructure the body to get the name and parent_id
+    const { new_parent_id } = body as { new_parent_id: string };
+    // validate the name field
+    if (!new_parent_id) {
+      return res
+        .status(400)
+        .json({ status: false, message: "New Parent is required" });
+    }
+
+    // check if the folder existed or not
+
+    const folder = await findOwnedFolder(folderId, clerkId, res);
+    if (!folder) return;
+    // move the folder
+    await moveFolderService(folder.name, folderId, folder.path, new_parent_id);
+    res
+      .status(200)
+      .json({ status: true, message: "Folder Moved successfully" });
+  } catch (error) {
+    console.log("error", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// delete folder
+export const deleteFolder = async (req: Request, res: Response) => {
+  //   check if the user is authenticated and get the clerkId
+  const clerkId = requireAuth(req, res);
+  if (!clerkId) return;
+
+  // check if the Id is Presented in the URL params or not
+  const folderId = isRequestParamsMissing(req, res, "Folder");
+  if (!folderId) return;
+
+  try {
+    // check if the folder existed or not
+    const folder = await findOwnedFolder(folderId, clerkId, res);
+    if (!folder) return;
+    // delete the folder
+    await deleteFolderService(folderId, folder.path);
+    res
+      .status(200)
+      .json({ status: true, message: "Folder Deleted successfully" });
   } catch (error) {
     console.log("error", error);
     return res.status(500).json({ error: "Internal Server Error" });

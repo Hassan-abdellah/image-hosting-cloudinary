@@ -4,6 +4,21 @@ import { prisma } from "../lib/prisma";
 import { cp, mkdir, rm } from "fs/promises";
 const BASE_DIR = path.join(cwd(), "storage");
 
+// get all subfolders from path
+const getSubFoldersFromParentPath = async (
+  parentPath: string,
+  parentFolderId: string,
+) => {
+  // 1. Find all subfolders whose path starts with the old folder path
+  const subFolders = await prisma.folder.findMany({
+    where: {
+      // replace all \ by /
+      path: { startsWith: parentPath.replace(/\\/g, "/") + "/" },
+      id: { not: parentFolderId }, // exclude the parent itself
+    },
+  });
+  return subFolders;
+};
 // create folder
 export const createFolderService = async (
   folderName: string,
@@ -65,12 +80,11 @@ export const renameFolderService = async (
   const folderPathForDB = path.relative(BASE_DIR, newPath).replace(/\\/g, "/");
 
   // 1. Find all subfolders whose path starts with the old folder path
-  const subFolders = await prisma.folder.findMany({
-    where: {
-      path: { startsWith: existingFolderPath.replace(/\\/g, "/") + "/" },
-      id: { not: folderId }, // exclude the parent itself
-    },
-  });
+
+  const subFolders = await getSubFoldersFromParentPath(
+    existingFolderPath,
+    folderId,
+  );
 
   // 2. Copy the folder to the new path with all contents
   try {
@@ -109,4 +123,113 @@ export const renameFolderService = async (
   await rm(oldPath, { recursive: true, force: true }).catch(() => null);
 
   return { id: folderId, name: newFolderName, path: newPath };
+};
+
+// move folder -> Cut and Paste
+export const moveFolderService = async (
+  existingFolderName: string,
+  folderId: string,
+  existingFolderPath: string,
+  newParnetFolderId: string,
+) => {
+  // 1. get the path of the new parent folder -> destination
+
+  const destinationFolder = await prisma.folder.findFirst({
+    where: { id: newParnetFolderId },
+  });
+
+  if (!destinationFolder) return;
+
+  const oldPath = path.join(BASE_DIR, existingFolderPath || "");
+  const newPath = path.join(
+    BASE_DIR,
+    destinationFolder?.path,
+    existingFolderName,
+  );
+
+  //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
+  const folderPathForDB = path.relative(BASE_DIR, newPath).replace(/\\/g, "/");
+
+  // 2. prevent move to the itself
+
+  if (folderPathForDB.startsWith(existingFolderPath + "/")) {
+    throw new Error("Cannot move a folder into itself or its own subfolder");
+  }
+  // 3. Find all subfolders whose path starts with the old folder path
+
+  const subFolders = await getSubFoldersFromParentPath(
+    existingFolderPath,
+    folderId,
+  );
+
+  // 4. Copy the folder to the new path with all contents
+  try {
+    await cp(oldPath, newPath, { recursive: true });
+  } catch (fsError) {
+    // 3. Throw to trigger Prisma transaction rollback
+    throw new Error(`File System Error: ${(fsError as Error).message}`);
+  }
+
+  // 3. Update DB — for parent and subfolders rollback if fails
+  try {
+    await prisma.$transaction([
+      prisma.folder.update({
+        where: { id: folderId },
+        data: { parent_id: destinationFolder.id, path: folderPathForDB },
+      }),
+      ...subFolders.map((subfolder) => {
+        // replace old text to new text
+        const newSubfolderPath = subfolder.path.replace(
+          existingFolderPath,
+          folderPathForDB,
+        );
+        return prisma.folder.update({
+          where: { id: subfolder.id },
+          data: { path: newSubfolderPath },
+        });
+      }),
+    ]);
+  } catch (dbError) {
+    // Undo copy if DB fails
+    await rm(newPath, { recursive: true, force: true }).catch(() => null);
+    throw new Error(`DB error: ${(dbError as Error).message}`);
+  }
+
+  // 3. Delete old folder last — after both cp and DB succeed
+  await rm(oldPath, { recursive: true, force: true }).catch(() => null);
+
+  return {
+    id: folderId,
+    name: existingFolderName,
+    parent_id: destinationFolder.id,
+    path: newPath,
+  };
+};
+
+// delete folder with all of its content
+export const deleteFolderService = async (
+  folderId: string,
+  existingFolderPath: string,
+) => {
+  // path to delete
+  const pathToDelete = path.join(BASE_DIR, existingFolderPath);
+
+  // 1. Delete from DB
+  try {
+    await prisma.folder.delete({ where: { id: folderId } });
+  } catch (dbError) {
+    throw new Error(`DB error: ${(dbError as Error).message}`);
+  }
+
+  // 2. remove from the file system -> if db fails this will roll back
+  try {
+    await rm(pathToDelete, { recursive: true, force: true });
+  } catch (fsError) {
+    // 3. Throw to trigger Prisma transaction rollback
+    throw new Error(`File System Error: ${(fsError as Error).message}`);
+  }
+
+  return {
+    id: folderId,
+  };
 };

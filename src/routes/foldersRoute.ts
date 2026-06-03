@@ -1,5 +1,10 @@
 import express from "express";
-import { createFolder, renameFolder } from "../controllers/folderController.js";
+import {
+  createFolder,
+  deleteFolder,
+  moveFolder,
+  renameFolder,
+} from "../controllers/folderController.js";
 const router = express.Router();
 
 // Create a new folder
@@ -8,9 +13,15 @@ router.post("/", createFolder);
 // router.get("/");
 // // Get a specific folder by ID
 // router.get("/:id");
-// // Update a folder by ID
+
+// Update a folder by ID
+// rename folder
 router.put("/:id/rename", renameFolder);
-// // Delete a folder by ID
-// router.delete("/:id");
+// Update a folder by ID
+// move folder to new paren
+// cut & paste
+router.patch("/:id/move", moveFolder);
+// Delete a folder by ID
+router.delete("/:id", deleteFolder);
 
 export default router;
