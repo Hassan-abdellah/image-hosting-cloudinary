@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Request, Response } from "express";
 import {
   findOwnedFolder,
@@ -55,7 +56,7 @@ export const fetchImages = async (req: Request, res: Response) => {
       orderBy: {
         [sort_by ?? "createdAt"]: sort_type ?? "desc",
       },
-
+      include: { folder: { select: { path: true } } },
       skip: skip,
       take: per_page,
     }),
@@ -69,9 +70,17 @@ export const fetchImages = async (req: Request, res: Response) => {
       },
     }),
   ]);
+
+  const imageswithURLS = images.map((image) => {
+    const imageURL = `${process.env.BASE_URL}/api/images/${image.id}`;
+    return {
+      ...image,
+      url: imageURL,
+    };
+  });
   return res.status(200).json({
     status: true,
-    images: images,
+    images: imageswithURLS,
     pagination: {
       total: total,
       page: page,
@@ -80,6 +89,23 @@ export const fetchImages = async (req: Request, res: Response) => {
     },
   });
 };
+
+// get image by id
+
+export const fetchImage = async (req: Request, res: Response) => {
+  //   check if the user is authenticated and get the clerkId
+  const clerkId = requireAuth(req, res);
+  if (!clerkId) return;
+
+  const imageId = isRequestParamsMissing(req, res, "Image");
+  if (!imageId) return;
+  const image = await findOwnedImage(imageId, clerkId, res);
+  if (!image) return;
+
+  const imagePath = path.join(image.folder.path, image.file_name);
+  res.sendFile(imagePath, { root: path.resolve("storage") });
+};
+
 // Upload Images to folders
 export const uploadImageToFolder = async (req: Request, res: Response) => {
   //   check if the user is authenticated and get the clerkId
