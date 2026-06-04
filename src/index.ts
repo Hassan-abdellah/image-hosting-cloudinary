@@ -1,8 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import { clerkMiddleware } from "@clerk/express";
-import foldersRoute from "./routes/foldersRoute.js";
-import imagesRoutes from "./routes/imagesRoutes.js";
+import foldersRoute from "./routes/folders.js";
+import imagesRoutes from "./routes/images.js";
 // initialize express app
 const app = express();
 const PORT = process.env.PORT || 8000;
