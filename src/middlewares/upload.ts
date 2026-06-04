@@ -3,8 +3,7 @@ import multer, { FileFilterCallback } from "multer";
 import path from "path";
 import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
-
-const Base_UPLOAD_DIR = path.resolve("storage");
+import { Base_UPLOAD_DIR } from "../constants";
 // get the auth user direcotry with his username
 const resolveUploadDirName = async (req: Request): Promise<string> => {
   const { userId: clerkId } = getAuth(req);
