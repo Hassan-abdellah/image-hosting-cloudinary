@@ -79,14 +79,22 @@ export const renameFolderService = async (
   //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
   const folderPathForDB = path.relative(BASE_DIR, newPath).replace(/\\/g, "/");
 
-  // 1. Find all subfolders whose path starts with the old folder path
+  // 1.check if there is any folder with the new name inside beside the newely renamed folder
+
+  const duplicated = await prisma.folder.findFirst({
+    where: { path: folderPathForDB, id: { not: folderId } },
+  });
+
+  if (duplicated)
+    throw new Error(`A folder named "${newFolderName}" already exists`);
+  // 2. Find all subfolders whose path starts with the old folder path
 
   const subFolders = await getSubFoldersFromParentPath(
     existingFolderPath,
     folderId,
   );
 
-  // 2. Copy the folder to the new path with all contents
+  // 3. Copy the folder to the new path with all contents
   try {
     await cp(oldPath, newPath, { recursive: true });
   } catch (fsError) {
@@ -94,7 +102,7 @@ export const renameFolderService = async (
     throw new Error(`File System Error: ${(fsError as Error).message}`);
   }
 
-  // 3. Update DB — for parent and subfolders rollback if fails
+  // 4. Update DB — for parent and subfolders rollback if fails
   try {
     await prisma.$transaction([
       prisma.folder.update({
@@ -119,7 +127,7 @@ export const renameFolderService = async (
     throw new Error(`DB error: ${(dbError as Error).message}`);
   }
 
-  // 3. Delete old folder last — after both cp and DB succeed
+  // 5. Delete old folder last — after both cp and DB succeed
   await rm(oldPath, { recursive: true, force: true }).catch(() => null);
 
   return { id: folderId, name: newFolderName, path: newPath };
@@ -150,27 +158,35 @@ export const moveFolderService = async (
   //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
   const folderPathForDB = path.relative(BASE_DIR, newPath).replace(/\\/g, "/");
 
-  // 2. prevent move to the itself
+  // 2.check if there is any folder with the new name inside beside the newely renamed folder
+
+  const duplicated = await prisma.folder.findFirst({
+    where: { path: folderPathForDB, id: { not: folderId } },
+  });
+
+  if (duplicated) throw new Error(`A folder with the same name already exists`);
+
+  // 3. prevent move to the itself
 
   if (folderPathForDB.startsWith(existingFolderPath + "/")) {
     throw new Error("Cannot move a folder into itself or its own subfolder");
   }
-  // 3. Find all subfolders whose path starts with the old folder path
+  // 4. Find all subfolders whose path starts with the old folder path
 
   const subFolders = await getSubFoldersFromParentPath(
     existingFolderPath,
     folderId,
   );
 
-  // 4. Copy the folder to the new path with all contents
+  // 5. Copy the folder to the new path with all contents
   try {
     await cp(oldPath, newPath, { recursive: true });
   } catch (fsError) {
-    // 3. Throw to trigger Prisma transaction rollback
+    // 6. Throw to trigger Prisma transaction rollback
     throw new Error(`File System Error: ${(fsError as Error).message}`);
   }
 
-  // 3. Update DB — for parent and subfolders rollback if fails
+  // 7. Update DB — for parent and subfolders rollback if fails
   try {
     await prisma.$transaction([
       prisma.folder.update({
@@ -195,7 +211,7 @@ export const moveFolderService = async (
     throw new Error(`DB error: ${(dbError as Error).message}`);
   }
 
-  // 3. Delete old folder last — after both cp and DB succeed
+  // 8. Delete old folder last — after both cp and DB succeed
   await rm(oldPath, { recursive: true, force: true }).catch(() => null);
 
   return {

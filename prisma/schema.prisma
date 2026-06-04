@@ -29,7 +29,7 @@ model User {
 model Folder {
   id            String    @id @default(uuid())
   name          String 
-  path          String   
+  path          String    @unique  
   parent_id     String?
   createdAt     DateTime  @default(now())
   user_id       String    
@@ -46,8 +46,8 @@ model Folder {
 model Image {
   id            String    @id @default(uuid())
   file_name     String   
-  path          String    
-  size          BigInt
+  original_name String
+  size          Int
   createdAt     DateTime  @default(now())
   folder_id     String
   folder        Folder    @relation(fields: [folder_id],references: [id],onDelete: Cascade)
