@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { Request, Response } from "express";
 import {
   findOwnedFolder,
@@ -12,6 +11,7 @@ import { ImageCreateManyInput } from "../generated/prisma/models";
 import path from "path";
 import { Base_UPLOAD_DIR } from "../constants";
 import { rename, unlink } from "fs/promises";
+import { generateImagesWithURLs } from "../utils/imagesUtils";
 
 interface fetchImagesQuery {
   page?: string;
@@ -22,7 +22,6 @@ interface fetchImagesQuery {
   image_id?: string;
 }
 // get images
-
 export const fetchImages = async (req: Request, res: Response) => {
   //   check if the user is authenticated and get the clerkId
   const clerkId = requireAuth(req, res);
@@ -71,13 +70,8 @@ export const fetchImages = async (req: Request, res: Response) => {
     }),
   ]);
 
-  const imageswithURLS = images.map((image) => {
-    const imageURL = `${process.env.BASE_URL}/api/images/${image.id}`;
-    return {
-      ...image,
-      url: imageURL,
-    };
-  });
+  // build image urls
+  const imageswithURLS = generateImagesWithURLs(images);
   return res.status(200).json({
     status: true,
     images: imageswithURLS,
@@ -91,7 +85,6 @@ export const fetchImages = async (req: Request, res: Response) => {
 };
 
 // get image by id
-
 export const fetchImage = async (req: Request, res: Response) => {
   //   check if the user is authenticated and get the clerkId
   const clerkId = requireAuth(req, res);
@@ -104,6 +97,62 @@ export const fetchImage = async (req: Request, res: Response) => {
 
   const imagePath = path.join(image.folder.path, image.file_name);
   res.sendFile(imagePath, { root: path.resolve("storage") });
+};
+
+// get image neighbors
+export const fetchImageNeighbors = async (req: Request, res: Response) => {
+  //   check if the user is authenticated and get the clerkId
+  const clerkId = requireAuth(req, res);
+  if (!clerkId) return;
+
+  const imageId = isRequestParamsMissing(req, res, "Image");
+  if (!imageId) return;
+  const image = await findOwnedImage(imageId, clerkId, res);
+  if (!image) return;
+
+  const { sort_by, sort_type, folder_id } = req.query as fetchImagesQuery;
+  const [prev, next] = await Promise.all([
+    prisma.image.findFirst({
+      where: {
+        user_id: clerkId,
+        folder_id: folder_id ? folder_id : undefined,
+      },
+      cursor: {
+        id: imageId,
+      },
+      skip: 1,
+      take: -1,
+      orderBy:
+        sort_by && sort_type
+          ? {
+              [sort_by ?? "createdAt"]: sort_type ?? "desc",
+            }
+          : undefined,
+      select: { id: true },
+    }),
+
+    prisma.image.findFirst({
+      where: {
+        user_id: clerkId,
+        folder_id: folder_id ? folder_id : undefined,
+      },
+      cursor: { id: imageId },
+      orderBy:
+        sort_by && sort_type
+          ? {
+              [sort_by ?? "createdAt"]: sort_type ?? "desc",
+            }
+          : undefined,
+      skip: 1,
+      take: 1,
+      select: { id: true },
+    }),
+  ]);
+
+  res.status(200).json({
+    prev: prev ?? null,
+    next: next ?? null,
+  });
 };
 
 // Upload Images to folders

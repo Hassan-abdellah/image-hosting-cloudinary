@@ -2,6 +2,7 @@ import express from "express";
 import {
   createFolder,
   deleteFolder,
+  fetchFolders,
   moveFolder,
   renameFolder,
 } from "../controllers/folderController.js";
@@ -9,15 +10,12 @@ import { upload } from "../middlewares/upload.js";
 import { uploadImageToFolder } from "../controllers/imagesController.js";
 const router = express.Router();
 
+// Get folder content from parent folder id
+router.get("/", fetchFolders);
 // Create a new folder
 router.post("/", createFolder);
 // upload images to certain folders
 router.post("/:id/upload", upload.array("images", 10), uploadImageToFolder);
-// // Get all folders for the authenticated user
-// router.get("/");
-// // Get a specific folder by ID
-// router.get("/:id");
-
 // Update a folder by ID
 // rename folder
 router.put("/:id/rename", renameFolder);
