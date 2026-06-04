@@ -1,6 +1,6 @@
 import { type Request, type Response } from "express";
 import { prisma } from "../lib/prisma";
-import { requireAuth } from "../utils/authUtils";
+import { findOwnedFolder, requireAuth } from "../utils/authUtils";
 import { isRequestParamsMissing, requireReqBody } from "../utils/reqUtils";
 import {
   createFolderService,
@@ -12,27 +12,6 @@ import {
 interface folderReqBody {
   parent_id?: string;
   name: string;
-}
-
-/** Find a folder by id and verify ownership. Returns null and sends response on failure. */
-async function findOwnedFolder(
-  folderId: string,
-  clerkId: string,
-  res: Response,
-) {
-  const folder = await prisma.folder.findUnique({ where: { id: folderId } });
-
-  if (!folder) {
-    res.status(404).json({ status: false, message: "Folder not found" });
-    return null;
-  }
-
-  if (folder.user_id !== clerkId) {
-    res.status(403).json({ status: false, message: "Forbidden" });
-    return null;
-  }
-
-  return folder;
 }
 
 // create Folder

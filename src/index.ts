@@ -5,7 +5,6 @@ import foldersRoute from "./routes/foldersRoute.js";
 // initialize express app
 const app = express();
 const PORT = process.env.PORT || 8000;
-
 // Clerk middleware to handle authentication and user management
 app.use(clerkMiddleware());
 
