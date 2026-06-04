@@ -11,6 +11,13 @@ app.use(clerkMiddleware());
 
 // body parser middleware to parse JSON request bodies
 app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send({
+    protocol: req.protocol,
+    host_name: req.get("host"),
+  });
+});
 // folders routes
 app.use("/api/folders", foldersRoute);
 // images routes

@@ -10,8 +10,76 @@ import { prisma } from "../lib/prisma";
 import { ImageCreateManyInput } from "../generated/prisma/models";
 import path from "path";
 import { Base_UPLOAD_DIR } from "../constants";
-import { unlink } from "fs/promises";
+import { rename, unlink } from "fs/promises";
 
+interface fetchImagesQuery {
+  page?: string;
+  per_page?: string;
+  sort_by?: "original_name" | "createdAt" | "size";
+  sort_type?: "desc" | "asc";
+  folder_id?: string;
+  image_id?: string;
+}
+// get images
+
+export const fetchImages = async (req: Request, res: Response) => {
+  //   check if the user is authenticated and get the clerkId
+  const clerkId = requireAuth(req, res);
+  if (!clerkId) return;
+
+  const {
+    page: paramPage,
+    per_page: paramLimit,
+    sort_by,
+    sort_type,
+    folder_id,
+    image_id,
+  } = req.query as fetchImagesQuery;
+  // pagination and sorting params
+  const page = paramPage && Number(paramPage) > 0 ? Number(paramPage) : 1;
+  //get 10 images per query
+  const per_page =
+    paramLimit && Number(paramLimit) > 0 ? Number(paramLimit) : 10;
+
+  const skip = (page - 1) * per_page;
+
+  const [images, total] = await Promise.all([
+    prisma.image.findMany({
+      where: {
+        user_id: clerkId,
+        // conditional by folder if exits
+        folder_id: folder_id ? folder_id : undefined,
+        // conditional by id if exits
+        id: image_id ? image_id : undefined,
+      },
+      orderBy: {
+        [sort_by ?? "createdAt"]: sort_type ?? "desc",
+      },
+
+      skip: skip,
+      take: per_page,
+    }),
+    prisma.image.count({
+      where: {
+        user_id: clerkId,
+        // conditional by folder if exits
+        folder_id: folder_id ? folder_id : undefined,
+        // conditional by id if exits
+        id: image_id ? image_id : undefined,
+      },
+    }),
+  ]);
+  return res.status(200).json({
+    status: true,
+    images: images,
+    pagination: {
+      total: total,
+      page: page,
+      per_page: per_page,
+      totalPages: Math.ceil(total / per_page),
+    },
+  });
+};
 // Upload Images to folders
 export const uploadImageToFolder = async (req: Request, res: Response) => {
   //   check if the user is authenticated and get the clerkId
@@ -54,6 +122,84 @@ export const uploadImageToFolder = async (req: Request, res: Response) => {
     // DB failed — delete the file multer already wrote so disk and DB stay in sync
     files.forEach((file) => fs.unlink(file.path, () => {}));
 
+    console.log("error", error);
+
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// move image to another folder
+export const moveImageToFolder = async (req: Request, res: Response) => {
+  //   check if the user is authenticated and get the clerkId
+  const clerkId = requireAuth(req, res);
+  if (!clerkId) return;
+  // check image id is in the url
+  const imageId = isRequestParamsMissing(req, res, "Image");
+  if (!imageId) return;
+
+  const body = requireReqBody(req, res);
+  if (!body) return;
+
+  const { new_parent_id } = req.body as { new_parent_id: string };
+  if (!new_parent_id) {
+    return res
+      .status(401)
+      .json({ status: false, message: "Destination Folder Id is required" });
+  }
+
+  try {
+    // 1. check if the image user wants to upload to is already there and belongs to him
+    const image = await findOwnedImage(imageId, clerkId, res);
+
+    if (!image) return;
+
+    // prevent moving to the same folder
+
+    if (image.folder_id === new_parent_id) {
+      return res
+        .status(400)
+        .send({ status: false, message: "Can’t move to the same folder" });
+    }
+    // get the destination folder
+    const destinationFolder = await findOwnedFolder(
+      new_parent_id,
+      clerkId,
+      res,
+    );
+    if (!destinationFolder) return;
+
+    const existingFolderPath = image.folder.path;
+    const imageName = image.file_name;
+    const destinationFolderPath = destinationFolder.path;
+
+    // contstuct the path of the image from folder path/image name
+    const oldPath = path.join(Base_UPLOAD_DIR, existingFolderPath, imageName);
+    const newPath = path.join(
+      Base_UPLOAD_DIR,
+      destinationFolderPath,
+      imageName,
+    );
+    // 3. update the image with the new folder id
+    await prisma.image.update({
+      where: { id: imageId, user_id: clerkId },
+      data: {
+        folder_id: new_parent_id,
+      },
+    });
+
+    // 4. moving in file system
+    await rename(oldPath, newPath).catch(async () => {
+      // roll back DB to old values
+      await prisma.image.update({
+        where: { id: imageId },
+        data: { folder_id: image.folder_id },
+      });
+      throw new Error("Failed to move file");
+    });
+    res
+      .status(200)
+      .json({ status: true, message: "Images Moved Successfully" });
+  } catch (error) {
     console.log("error", error);
 
     return res.status(500).json({ error: "Internal Server Error" });
@@ -147,12 +293,10 @@ export const deleteMultiImages = async (req: Request, res: Response) => {
         unlink(imagePath).catch(() => {});
       }),
     );
-    res
-      .status(200)
-      .json({
-        status: true,
-        message: `(${images.length}) Images Deleted Successfully`,
-      });
+    res.status(200).json({
+      status: true,
+      message: `(${images.length}) Images Deleted Successfully`,
+    });
   } catch (error) {
     console.log("error", error);
     return res.status(500).json({ error: "Internal Server Error" });
