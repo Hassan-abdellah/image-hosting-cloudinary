@@ -32,3 +32,28 @@ export async function findOwnedFolder(
 
   return folder;
 }
+/** Find a image by id and verify ownership. Returns null and sends response on failure. */
+export async function findOwnedImage(
+  imageId: string,
+  clerkId: string,
+  res: Response,
+) {
+  const image = await prisma.image.findUnique({
+    where: { id: imageId },
+    include: {
+      folder: { select: { path: true } },
+    },
+  });
+
+  if (!image) {
+    res.status(404).json({ status: false, message: "Image not found" });
+    return null;
+  }
+
+  if (image.user_id !== clerkId) {
+    res.status(403).json({ status: false, message: "Forbidden" });
+    return null;
+  }
+
+  return image;
+}
