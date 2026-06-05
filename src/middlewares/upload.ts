@@ -4,6 +4,7 @@ import path from "path";
 import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
 import { Base_UPLOAD_DIR } from "../constants";
+import { safeDirName } from "../utils/generalUtils";
 // get the auth user direcotry with his username
 const resolveUploadDirName = async (req: Request): Promise<string> => {
   const { userId: clerkId } = getAuth(req);
@@ -35,7 +36,7 @@ const resolveUploadDirName = async (req: Request): Promise<string> => {
   // fallback to clerk id if username not found
   const userName = user.username ?? clerkId;
   // clean the dir name for saving
-  const safeName = userName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const safeName = safeDirName(userName);
   // the upload directory will be storage/loggedin user name
   // check if the folder path already inside the / username
   const userDirName = folder.path.startsWith(safeName)

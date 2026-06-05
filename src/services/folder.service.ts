@@ -2,6 +2,7 @@ import path from "path";
 import { cwd } from "process";
 import { prisma } from "../lib/prisma";
 import { cp, mkdir, rm } from "fs/promises";
+import { safeDirName } from "../utils/generalUtils";
 const BASE_DIR = path.join(cwd(), "storage");
 
 // get all subfolders from path
@@ -26,6 +27,8 @@ export const createFolderService = async (
   userId: string,
 ) => {
   let parentFolderPath = null;
+  // sanitaize the folder name
+  const safeName = safeDirName(folderName);
 
   if (parentId) {
     const folder = await prisma.folder.findUnique({ where: { id: parentId } });
@@ -33,8 +36,8 @@ export const createFolderService = async (
   }
 
   const folderPath = parentFolderPath
-    ? path.join(BASE_DIR, parentFolderPath, folderName)
-    : path.join(BASE_DIR, folderName);
+    ? path.join(BASE_DIR, parentFolderPath, safeName)
+    : path.join(BASE_DIR, safeName);
 
   //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
   const folderPathForDB = path
@@ -47,7 +50,7 @@ export const createFolderService = async (
     const createdFolder = await tx.folder.create({
       data: {
         user_id: userId,
-        name: folderName,
+        name: safeName,
         parent_id: parentId || null,
         path: folderPathForDB,
       },
@@ -73,8 +76,10 @@ export const renameFolderService = async (
   folderId: string,
   existingFolderPath: string,
 ) => {
+  // sanitaize the folder name
+  const safeName = safeDirName(newFolderName);
   const oldPath = path.join(BASE_DIR, existingFolderPath || "");
-  const newPath = path.join(path.dirname(oldPath), newFolderName);
+  const newPath = path.join(path.dirname(oldPath), safeName);
 
   //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
   const folderPathForDB = path.relative(BASE_DIR, newPath).replace(/\\/g, "/");
@@ -86,7 +91,7 @@ export const renameFolderService = async (
   });
 
   if (duplicated)
-    throw new Error(`A folder named "${newFolderName}" already exists`);
+    throw new Error(`A folder named "${safeName}" already exists`);
   // 2. Find all subfolders whose path starts with the old folder path
 
   const subFolders = await getSubFoldersFromParentPath(
@@ -107,7 +112,7 @@ export const renameFolderService = async (
     await prisma.$transaction([
       prisma.folder.update({
         where: { id: folderId },
-        data: { name: newFolderName, path: folderPathForDB },
+        data: { name: safeName, path: folderPathForDB },
       }),
       ...subFolders.map((subfolder) => {
         // replace old text to new text
@@ -130,7 +135,7 @@ export const renameFolderService = async (
   // 5. Delete old folder last — after both cp and DB succeed
   await rm(oldPath, { recursive: true, force: true }).catch(() => null);
 
-  return { id: folderId, name: newFolderName, path: newPath };
+  return { id: folderId, name: safeName, path: newPath };
 };
 
 // move folder -> Cut and Paste
