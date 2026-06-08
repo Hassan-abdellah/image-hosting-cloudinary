@@ -30,7 +30,12 @@ app.use(
   }),
 );
 // Clerk middleware to handle authentication and user management
-app.use(clerkMiddleware());
+app.use(
+  clerkMiddleware({
+    authorizedParties: ["http://localhost:5173"],
+    clockSkewInMs: 60000, // tolerate 60 seconds of clock drift
+  }),
+);
 
 // users webhook
 app.use("/webhooks/clerk", userRoutes);

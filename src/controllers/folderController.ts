@@ -35,6 +35,26 @@ const IMAGE_SORT_MAP: Record<string, string> = {
   createdAt: "createdAt",
 };
 
+// get the root folder of logged in user
+
+export const fetchRootUserFolder = async (req: Request, res: Response) => {
+  //   check if the user is authenticated and get the clerkId
+  const clerkId = requireAuth(req, res);
+  if (!clerkId) return;
+
+  const folder = await prisma.folder.findFirst({
+    where: {
+      user_id: clerkId,
+      parent_id: null,
+    },
+  });
+
+  return res.status(200).json({
+    status: true,
+    folder: folder,
+  });
+};
+
 // get Folder content based on parent folder id
 
 export const fetchFolders = async (req: Request, res: Response) => {

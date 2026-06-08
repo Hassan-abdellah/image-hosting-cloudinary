@@ -3,6 +3,7 @@ import {
   createFolder,
   deleteFolder,
   fetchFolders,
+  fetchRootUserFolder,
   moveFolder,
   renameFolder,
 } from "../controllers/folderController.js";
@@ -12,6 +13,8 @@ const router = express.Router();
 
 // Get folder content from parent folder id
 router.get("/", fetchFolders);
+// Get the root user folder
+router.get("/me", fetchRootUserFolder);
 // Create a new folder
 router.post("/", createFolder);
 // upload images to certain folders
