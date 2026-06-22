@@ -53,4 +53,9 @@ model Image {
   folder        Folder    @relation(fields: [folder_id],references: [id],onDelete: Cascade)
   user_id       String    
   user          User      @relation(fields: [user_id],references: [clerkId])
+
+  @@index([user_id, folder_id, createdAt, id])
+  @@index([user_id, folder_id, file_name, id])
+  @@index([user_id, folder_id, size, id])
+
 }
