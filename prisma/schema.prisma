@@ -47,6 +47,7 @@ model Image {
   id            String    @id @default(uuid())
   file_name     String   
   original_name String
+  url           String
   size          Int
   createdAt     DateTime  @default(now())
   folder_id     String
