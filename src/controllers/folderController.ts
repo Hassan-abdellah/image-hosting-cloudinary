@@ -8,7 +8,7 @@ import {
   moveFolderService,
   renameFolderService,
 } from "../services/folder.service";
-import { buildImgeURL, generateImagesWithURLs } from "../utils/imagesUtils";
+import { generateImagesWithURLs } from "../utils/imagesUtils";
 
 interface folderReqBody {
   parent_id?: string;
@@ -25,12 +25,11 @@ interface fetchFoldersQuery {
 
 const FOLDER_SORT_MAP: Record<string, string> = {
   name: "name",
-  size: "size",
   createdAt: "createdAt",
 };
 
 const IMAGE_SORT_MAP: Record<string, string> = {
-  name: "original_name",
+  name: "file_name",
   size: "size",
   createdAt: "createdAt",
 };
@@ -79,60 +78,73 @@ export const fetchFolders = async (req: Request, res: Response) => {
   const page = paramPage && Number(paramPage) > 0 ? Number(paramPage) : 1;
   //get 10 images per query
   const per_page =
-    paramLimit && Number(paramLimit) > 0 ? Number(paramLimit) : 10;
+    paramLimit && Number(paramLimit) > 0 ? Number(paramLimit) : 100;
 
   const skip = (page - 1) * per_page;
 
   const folderSortBy = FOLDER_SORT_MAP[sort_by ?? "createdAt"] ?? "createdAt";
   const imageSortBy = IMAGE_SORT_MAP[sort_by ?? "createdAt"] ?? "createdAt";
 
-  const [folders, total, folderImages, totalImages] = await Promise.all([
-    prisma.folder.findMany({
-      where: {
-        user_id: clerkId,
-        parent_id: parent_id,
-      },
-      orderBy: {
-        [folderSortBy]: sort_type ?? "desc",
-      },
+  const [folder, folders, total, folderImages, totalImages] = await Promise.all(
+    [
+      // folder with id
+      prisma.folder.findUnique({
+        where: {
+          user_id: clerkId,
+          id: parent_id,
+        },
+      }),
 
-      skip: skip,
-      take: per_page,
-    }),
-    prisma.folder.count({
-      where: {
-        user_id: clerkId,
-        parent_id: parent_id,
-      },
-    }),
-    // get the images for this folder
-    prisma.image.findMany({
-      where: {
-        folder_id: parent_id,
-        user_id: clerkId,
-      },
-      orderBy: {
-        [imageSortBy]: sort_type ?? "desc",
-      },
+      // folders
+      prisma.folder.findMany({
+        where: {
+          user_id: clerkId,
+          parent_id: parent_id,
+        },
+        orderBy: {
+          [folderSortBy]: sort_type ?? "desc",
+        },
 
-      skip: skip,
-      take: per_page,
-    }),
+        skip: skip,
+        take: per_page,
+      }),
+      // folders count
+      prisma.folder.count({
+        where: {
+          user_id: clerkId,
+          parent_id: parent_id,
+        },
+      }),
+      // get the images for this folder
+      prisma.image.findMany({
+        where: {
+          folder_id: parent_id,
+          user_id: clerkId,
+        },
+        orderBy: {
+          [imageSortBy]: sort_type ?? "desc",
+        },
 
-    // get the images count
-    prisma.image.count({
-      where: {
-        folder_id: parent_id,
-        user_id: clerkId,
-      },
-    }),
-  ]);
+        skip: skip,
+        take: per_page,
+      }),
+
+      // get the images count
+      prisma.image.count({
+        where: {
+          folder_id: parent_id,
+          user_id: clerkId,
+        },
+      }),
+    ],
+  );
 
   // build image urls
   const imageswithURLS = generateImagesWithURLs(folderImages);
 
   return res.status(200).json({
     status: true,
+    folder: folder,
     folders: {
       folders: folders,
       pagination: {

@@ -12,11 +12,15 @@ import path from "path";
 import { Base_UPLOAD_DIR } from "../constants";
 import { rename, unlink } from "fs/promises";
 import { generateImagesWithURLs } from "../utils/imagesUtils";
-
+const IMAGE_SORT_MAP: Record<string, string> = {
+  name: "file_name",
+  size: "size",
+  createdAt: "createdAt",
+};
 interface fetchImagesQuery {
   page?: string;
   per_page?: string;
-  sort_by?: "original_name" | "createdAt" | "size";
+  sort_by?: "name" | "createdAt" | "size";
   sort_type?: "desc" | "asc";
   folder_id?: string;
   image_id?: string;
@@ -96,59 +100,65 @@ export const fetchImage = async (req: Request, res: Response) => {
   if (!image) return;
 
   const imagePath = path.join(image.folder.path, image.file_name);
+  res.setHeader("Content-Disposition", `inline; filename=${image.file_name}`);
   res.sendFile(imagePath, { root: path.resolve("storage") });
 };
 
-// get image neighbors
 export const fetchImageNeighbors = async (req: Request, res: Response) => {
-  //   check if the user is authenticated and get the clerkId
   const clerkId = requireAuth(req, res);
   if (!clerkId) return;
 
   const imageId = isRequestParamsMissing(req, res, "Image");
   if (!imageId) return;
+
   const image = await findOwnedImage(imageId, clerkId, res);
   if (!image) return;
-
   const { sort_by, sort_type, folder_id } = req.query as fetchImagesQuery;
+  const imageSortBy = IMAGE_SORT_MAP[sort_by ?? "createdAt"] ?? "createdAt";
+
+  // Build orderBy, always appending `id` as a tiebreaker so the cursor is unambiguous
+  const primarySort =
+    imageSortBy && sort_type
+      ? { [imageSortBy]: sort_type }
+      : { createdAt: "desc" as const };
+
+  const forwardOrder = [primarySort, { id: "desc" as const }];
+
+  const reverseOrder = forwardOrder.map((clause) =>
+    Object.fromEntries(
+      Object.entries(clause).map(([k, v]) => [k, v === "asc" ? "desc" : "asc"]),
+    ),
+  );
+  const baseWhere = {
+    user_id: clerkId,
+    folder_id: folder_id ?? undefined, // avoids passing `undefined` as a filter value
+  };
+
+  console.log("forward", forwardOrder);
+  console.log("reverse", reverseOrder);
+
   const [prev, next] = await Promise.all([
+    // walk backward
     prisma.image.findFirst({
-      where: {
-        user_id: clerkId,
-        folder_id: folder_id ? folder_id : undefined,
-      },
-      cursor: {
-        id: imageId,
-      },
+      where: baseWhere,
+      cursor: { id: imageId },
+      orderBy: reverseOrder,
       skip: 1,
-      take: -1,
-      orderBy:
-        sort_by && sort_type
-          ? {
-              [sort_by ?? "createdAt"]: sort_type ?? "desc",
-            }
-          : undefined,
+      take: 1,
       select: { id: true },
     }),
 
+    // walk forward
     prisma.image.findFirst({
-      where: {
-        user_id: clerkId,
-        folder_id: folder_id ? folder_id : undefined,
-      },
+      where: baseWhere,
       cursor: { id: imageId },
-      orderBy:
-        sort_by && sort_type
-          ? {
-              [sort_by ?? "createdAt"]: sort_type ?? "desc",
-            }
-          : undefined,
+      orderBy: forwardOrder,
       skip: 1,
       take: 1,
       select: { id: true },
     }),
   ]);
-
+  console.log({ prev, next });
   res.status(200).json({
     prev: prev ?? null,
     next: next ?? null,
