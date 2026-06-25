@@ -4,7 +4,6 @@
   "description": "image hosting app",
   "license": "ISC",
   "author": "Hassan Abdellah",
-  "type": "module",
   "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon --exec tsx src/index.ts",
