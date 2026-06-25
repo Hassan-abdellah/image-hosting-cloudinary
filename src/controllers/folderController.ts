@@ -8,7 +8,6 @@ import {
   moveFolderService,
   renameFolderService,
 } from "../services/folder.service";
-import { generateImagesWithURLs } from "../utils/imagesUtils";
 
 interface folderReqBody {
   parent_id?: string;
@@ -139,9 +138,6 @@ export const fetchFolders = async (req: Request, res: Response) => {
     ],
   );
 
-  // build image urls
-  const imageswithURLS = generateImagesWithURLs(folderImages);
-
   return res.status(200).json({
     status: true,
     folder: folder,
@@ -155,7 +151,7 @@ export const fetchFolders = async (req: Request, res: Response) => {
       },
     },
     images: {
-      images: imageswithURLS,
+      images: folderImages,
       pagination: {
         total: totalImages,
         page: page,
@@ -303,7 +299,7 @@ export const deleteFolder = async (req: Request, res: Response) => {
     const folder = await findOwnedFolder(folderId, clerkId, res);
     if (!folder) return;
     // delete the folder
-    await deleteFolderService(folderId, folder.path);
+    await deleteFolderService(folderId);
     res
       .status(200)
       .json({ status: true, message: "Folder Deleted successfully" });
