@@ -7,7 +7,7 @@ import {
 import { isRequestParamsMissing, requireReqBody } from "../utils/reqUtils";
 import { prisma } from "../lib/prisma";
 import { ImageCreateManyInput } from "../generated/prisma/models";
-
+import path from "path";
 const IMAGE_SORT_MAP: Record<string, string> = {
   name: "file_name",
   size: "size",
@@ -178,15 +178,20 @@ export const uploadImageToFolder = async (req: Request, res: Response) => {
     // 2. isnert the metadata of the images in DB
 
     await prisma.image.createMany({
-      data: files.map((file, index) => ({
-        file_name: file.filename,
-        original_name: file.originalname,
-        size: file.size,
-        user_id: clerkId,
-        folder_id: folderId,
-        url: file.path,
-        createdAt: new Date(Date.now() + index),
-      })) as ImageCreateManyInput[],
+      data: files.map((file, index) => {
+        const uniqueTime = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        const uniqueFileName = `${uniqueTime}${path.extname(file.originalname)}`;
+        const uniqueCreatedAt = new Date(Date.now() + index);
+        return {
+          file_name: uniqueFileName,
+          original_name: file.originalname,
+          size: file.size,
+          user_id: clerkId,
+          folder_id: folderId,
+          url: file.path,
+          createdAt: uniqueCreatedAt,
+        };
+      }) as ImageCreateManyInput[],
     });
 
     // create the folder
