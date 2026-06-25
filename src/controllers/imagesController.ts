@@ -5,13 +5,9 @@ import {
   requireAuth,
 } from "../utils/authUtils";
 import { isRequestParamsMissing, requireReqBody } from "../utils/reqUtils";
-import fs from "fs";
 import { prisma } from "../lib/prisma";
 import { ImageCreateManyInput } from "../generated/prisma/models";
-import path from "path";
-import { Base_UPLOAD_DIR } from "../constants";
-import { rename, unlink } from "fs/promises";
-import { generateImagesWithURLs } from "../utils/imagesUtils";
+
 const IMAGE_SORT_MAP: Record<string, string> = {
   name: "file_name",
   size: "size",
@@ -74,11 +70,9 @@ export const fetchImages = async (req: Request, res: Response) => {
     }),
   ]);
 
-  // build image urls
-  const imageswithURLS = generateImagesWithURLs(images);
   return res.status(200).json({
     status: true,
-    images: imageswithURLS,
+    images: images,
     pagination: {
       total: total,
       page: page,
@@ -99,9 +93,7 @@ export const fetchImage = async (req: Request, res: Response) => {
   const image = await findOwnedImage(imageId, clerkId, res);
   if (!image) return;
 
-  const imagePath = path.join(image.folder.path, image.file_name);
-  res.setHeader("Content-Disposition", `inline; filename=${image.file_name}`);
-  res.sendFile(imagePath, { root: path.resolve("storage") });
+  res.status(200).json({ image });
 };
 
 export const fetchImageNeighbors = async (req: Request, res: Response) => {
@@ -134,9 +126,6 @@ export const fetchImageNeighbors = async (req: Request, res: Response) => {
     folder_id: folder_id ?? undefined, // avoids passing `undefined` as a filter value
   };
 
-  console.log("forward", forwardOrder);
-  console.log("reverse", reverseOrder);
-
   const [prev, next] = await Promise.all([
     // walk backward
     prisma.image.findFirst({
@@ -158,7 +147,6 @@ export const fetchImageNeighbors = async (req: Request, res: Response) => {
       select: { id: true },
     }),
   ]);
-  console.log({ prev, next });
   res.status(200).json({
     prev: prev ?? null,
     next: next ?? null,
@@ -190,12 +178,14 @@ export const uploadImageToFolder = async (req: Request, res: Response) => {
     // 2. isnert the metadata of the images in DB
 
     await prisma.image.createMany({
-      data: files.map((file) => ({
+      data: files.map((file, index) => ({
         file_name: file.filename,
         original_name: file.originalname,
         size: file.size,
         user_id: clerkId,
         folder_id: folderId,
+        url: file.path,
+        createdAt: new Date(Date.now() + index),
       })) as ImageCreateManyInput[],
     });
 
@@ -204,11 +194,6 @@ export const uploadImageToFolder = async (req: Request, res: Response) => {
       .status(201)
       .json({ status: true, message: "Images Uploaded Successfully" });
   } catch (error) {
-    // DB failed — delete the file multer already wrote so disk and DB stay in sync
-    files.forEach((file) => fs.unlink(file.path, () => {}));
-
-    console.log("error", error);
-
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -253,17 +238,6 @@ export const moveImageToFolder = async (req: Request, res: Response) => {
     );
     if (!destinationFolder) return;
 
-    const existingFolderPath = image.folder.path;
-    const imageName = image.file_name;
-    const destinationFolderPath = destinationFolder.path;
-
-    // contstuct the path of the image from folder path/image name
-    const oldPath = path.join(Base_UPLOAD_DIR, existingFolderPath, imageName);
-    const newPath = path.join(
-      Base_UPLOAD_DIR,
-      destinationFolderPath,
-      imageName,
-    );
     // 3. update the image with the new folder id
     await prisma.image.update({
       where: { id: imageId, user_id: clerkId },
@@ -272,21 +246,10 @@ export const moveImageToFolder = async (req: Request, res: Response) => {
       },
     });
 
-    // 4. moving in file system
-    await rename(oldPath, newPath).catch(async () => {
-      // roll back DB to old values
-      await prisma.image.update({
-        where: { id: imageId },
-        data: { folder_id: image.folder_id },
-      });
-      throw new Error("Failed to move file");
-    });
     res
       .status(200)
       .json({ status: true, message: "Images Moved Successfully" });
   } catch (error) {
-    console.log("error", error);
-
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -306,27 +269,16 @@ export const deleteImage = async (req: Request, res: Response) => {
 
     if (!image) return;
 
-    const folderPath = image.folder.path;
-    const imageName = image.file_name;
-    // contstuct the path of the image from folder path/image name
-    const imagePath = path.join(Base_UPLOAD_DIR, folderPath, imageName);
-
     // 3. delete the metadata of the image in DB
 
     await prisma.image.delete({
       where: { id: imageId },
     });
 
-    // 4. delete from the filesystem
-    // catch will not throw the error if it faield
-    await unlink(imagePath).catch(() => {});
-    // create the folder
     res
       .status(200)
       .json({ status: true, message: "Images Deleted Successfully" });
   } catch (error) {
-    console.log("error", error);
-
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -366,18 +318,6 @@ export const deleteMultiImages = async (req: Request, res: Response) => {
       where: { id: { in: images.map((item) => item.id) }, user_id: clerkId },
     });
 
-    // 4. delete from the filesystem
-
-    await Promise.all(
-      images.map((image) => {
-        const imagePath = path.join(
-          Base_UPLOAD_DIR,
-          image.folder.path,
-          image.file_name,
-        );
-        unlink(imagePath).catch(() => {});
-      }),
-    );
     res.status(200).json({
       status: true,
       message: `(${images.length}) Images Deleted Successfully`,
