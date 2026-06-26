@@ -92,6 +92,9 @@ export const fetchFolders = async (req: Request, res: Response) => {
           user_id: clerkId,
           id: parent_id,
         },
+        include: {
+          parent: true,
+        },
       }),
 
       // folders
