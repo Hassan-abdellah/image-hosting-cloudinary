@@ -139,27 +139,26 @@ export const fetchFolders = async (req: Request, res: Response) => {
 
       // Full parent chain (root → current folder)
       prisma.$queryRaw<
-        { id: string; name: string; parent_id: string | null }[]
-      >`
-       WITH RECURSIVE folder_chain AS (
-      SELECT id, name, parent_id, 0 AS depth
-      FROM "Folder"
-      WHERE id = ${parent_id} AND user_id = ${clerkId}
+        { id: string; name: string }[]
+      >`WITH RECURSIVE folder_chain AS (
+        SELECT id, name, 0 AS depth
+        FROM "Folder"
+        WHERE id = ${parent_id} AND user_id = ${clerkId}
 
-      UNION ALL
+        UNION ALL
 
-      SELECT f.id, f.name, f.parent_id, fc.depth + 1
+      SELECT f.id, f.name, fc.depth + 1
       FROM "Folder" f
       INNER JOIN folder_chain fc ON f.id = fc.parent_id
-    )
-    SELECT id, name, parent_id FROM folder_chain
-    ORDER BY depth DESC;
-  `,
+      )
+      SELECT id, name FROM folder_chain
+      ORDER BY depth DESC;
+      `,
     ]);
 
   return res.status(200).json({
     status: true,
-    folder: { ...folder, chain: parentChain },
+    folder: { ...folder, path_chain: parentChain },
     folders: {
       folders: folders,
       pagination: {
