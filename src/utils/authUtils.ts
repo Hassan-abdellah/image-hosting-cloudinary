@@ -18,7 +18,10 @@ export async function findOwnedFolder(
   clerkId: string,
   res: Response,
 ) {
-  const folder = await prisma.folder.findUnique({ where: { id: folderId } });
+  const folder = await prisma.folder.findUnique({
+    where: { id: folderId },
+    include: { parent: { select: { path: true } } },
+  });
 
   if (!folder) {
     res.status(404).json({ status: false, message: "Folder not found" });

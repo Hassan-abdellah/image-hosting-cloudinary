@@ -236,7 +236,7 @@ export const renameFolder = async (req: Request, res: Response) => {
     const folder = await findOwnedFolder(folderId, clerkId, res);
     if (!folder) return;
     // rename the folder
-    await renameFolderService(name, folderId, folder.path);
+    await renameFolderService(name, folderId, folder.path, folder.parent?.path);
     res
       .status(200)
       .json({ status: true, message: "Folder renamed successfully" });
