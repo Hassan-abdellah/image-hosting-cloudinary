@@ -142,13 +142,13 @@ export const fetchFolders = async (req: Request, res: Response) => {
         { id: string; name: string }[]
       >`WITH RECURSIVE folder_chain AS (
         SELECT id, name, 0 AS depth
-        FROM "Folder"
+        FROM Folder
         WHERE id = ${parent_id} AND user_id = ${clerkId}
 
         UNION ALL
 
       SELECT f.id, f.name, fc.depth + 1
-      FROM "Folder" f
+      FROM Folder f
       INNER JOIN folder_chain fc ON f.id = fc.parent_id
       )
       SELECT id, name FROM folder_chain
