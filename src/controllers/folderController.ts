@@ -84,8 +84,8 @@ export const fetchFolders = async (req: Request, res: Response) => {
   const folderSortBy = FOLDER_SORT_MAP[sort_by ?? "createdAt"] ?? "createdAt";
   const imageSortBy = IMAGE_SORT_MAP[sort_by ?? "createdAt"] ?? "createdAt";
 
-  const [folder, folders, total, folderImages, totalImages] = await Promise.all(
-    [
+  const [folder, folders, total, folderImages, totalImages, parentChain] =
+    await Promise.all([
       // folder with id
       prisma.folder.findUnique({
         where: {
@@ -135,8 +135,27 @@ export const fetchFolders = async (req: Request, res: Response) => {
           user_id: clerkId,
         },
       }),
-    ],
-  );
+      // get the folder full chain of parents
+
+      // Full parent chain (root → current folder)
+      prisma.$queryRaw<
+        { id: string; name: string; parent_id: string | null }[]
+      >`
+       WITH RECURSIVE folder_chain AS (
+      SELECT id, name, parent_id, 0 AS depth
+      FROM "Folder"
+      WHERE id = ${parent_id} AND user_id = ${clerkId}
+
+      UNION ALL
+
+      SELECT f.id, f.name, f.parent_id, fc.depth + 1
+      FROM "Folder" f
+      INNER JOIN folder_chain fc ON f.id = fc.parent_id
+    )
+    SELECT id, name, parent_id FROM folder_chain
+    ORDER BY depth DESC;
+  `,
+    ]);
 
   return res.status(200).json({
     status: true,
