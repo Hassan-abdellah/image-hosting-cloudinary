@@ -158,7 +158,7 @@ export const fetchFolders = async (req: Request, res: Response) => {
 
   return res.status(200).json({
     status: true,
-    folder: { ...folder, chain: parentChain },
+    folder: { ...folder, path_chain: parentChain },
     folders: {
       folders: folders,
       pagination: {
