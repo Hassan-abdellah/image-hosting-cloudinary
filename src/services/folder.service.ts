@@ -56,11 +56,11 @@ export const renameFolderService = async (
   newFolderName: string,
   folderId: string,
   existingFolderPath: string,
+  parentPath?: string,
 ) => {
   // sanitaize the folder name
   const safeName = safeDirName(newFolderName);
-  const oldPath = existingFolderPath || "";
-  const newPath = path.join(oldPath, safeName);
+  const newPath = parentPath ? path.join(parentPath, safeName) : safeName;
 
   //   save the path from after storage to store in DB, so we can easily reconstruct the path later when needed
   const folderPathForDB = newPath.replace(/\\/g, "/");
