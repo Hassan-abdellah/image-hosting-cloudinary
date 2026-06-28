@@ -8,6 +8,9 @@ import { isRequestParamsMissing, requireReqBody } from "../utils/reqUtils";
 import { prisma } from "../lib/prisma";
 import { ImageCreateManyInput } from "../generated/prisma/models";
 import path from "path";
+import { getPublicIdFromUrl } from "../utils/generalUtils";
+import cloudinary from "../config/cloudinary";
+import { deleteFromCloudinary } from "../services/cloudinary.service";
 const IMAGE_SORT_MAP: Record<string, string> = {
   name: "file_name",
   size: "size",
@@ -274,6 +277,10 @@ export const deleteImage = async (req: Request, res: Response) => {
 
     if (!image) return;
 
+    // 2. Extract public_ids from Cloudinary URLs and delete from Cloudinary
+    const imagesURlsToDelete = [image.url];
+    await deleteFromCloudinary(imagesURlsToDelete);
+
     // 3. delete the metadata of the image in DB
 
     await prisma.image.delete({
@@ -317,7 +324,12 @@ export const deleteMultiImages = async (req: Request, res: Response) => {
         .json({ status: false, message: "No Images found" });
     }
 
-    // 2. delete the metadata of the images in DB
+    // 2. Extract public_ids from Cloudinary URLs and delete from Cloudinary
+    // get the images urls
+    const imagesURlsToDelete = images.map((item) => item.url);
+    await deleteFromCloudinary(imagesURlsToDelete);
+
+    // 3. delete the metadata of the images in DB
 
     await prisma.image.deleteMany({
       where: { id: { in: images.map((item) => item.id) }, user_id: clerkId },
